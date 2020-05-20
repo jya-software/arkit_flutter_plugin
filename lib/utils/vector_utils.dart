@@ -1,5 +1,8 @@
 import 'package:vector_math/vector_math_64.dart';
 
+Map<String, double> convertVector2ToMap(Vector2 vector) =>
+    vector == null ? null : {'x': vector.x, 'y': vector.y};
+
 Map<String, double> convertVector3ToMap(Vector3 vector) =>
     vector == null ? null : {'x': vector.x, 'y': vector.y, 'z': vector.z};
 

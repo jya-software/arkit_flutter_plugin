@@ -174,6 +174,7 @@ class ARKitMaterial {
     this.transparencyMode = ARKitTransparencyMode.aOne,
     this.locksAmbientWithDiffuse = true,
     this.writesToDepthBuffer = true,
+    this.readsFromDepthBuffer = true,
     this.colorBufferWriteMask = ARKitColorMask.all,
     this.doubleSided = false,
     this.blendMode = ARKitBlendMode.alpha,
@@ -271,6 +272,8 @@ class ARKitMaterial {
   /// Determines whether the receiver writes to the depth buffer when rendered. Defaults to true.
   final bool writesToDepthBuffer;
 
+  final bool readsFromDepthBuffer;
+
   /// Determines whether the receiver writes to the color buffer when rendered. Defaults to ARKitColorMask.all.
   final ARKitColorMask colorBufferWriteMask;
 
@@ -302,6 +305,7 @@ class ARKitMaterial {
         'transparencyMode': transparencyMode.index,
         'locksAmbientWithDiffuse': locksAmbientWithDiffuse,
         'writesToDepthBuffer': writesToDepthBuffer,
+        'readsFromDepthBuffer': readsFromDepthBuffer,
         'colorBufferWriteMask': _colorMaskToInt(colorBufferWriteMask),
         'doubleSided': doubleSided,
         'blendMode': blendMode.index,

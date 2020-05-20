@@ -43,6 +43,8 @@
 @property (strong) SceneViewDelegate* delegate;
 @property (readwrite) ARConfiguration *configuration;
 @property BOOL forceUserTapOnCenter;
+@property (nonatomic, strong) ARHitTestResult *initialHitTestResult;
+//@property (nonatomic, strong) SCNNode *movedObject;
 @end
 
 @implementation FlutterArkitController
@@ -91,23 +93,75 @@
       [self updateSingleProperty:call andResult:result];
   } else if ([[call method] isEqualToString:@"updateMaterials"]) {
       [self updateMaterials:call andResult:result];
-  } else if ([[call method] isEqualToString:@"updateFaceGeometry"]) {
-      [self updateFaceGeometry:call andResult:result];
   } else if ([[call method] isEqualToString:@"getLightEstimate"]) {
       [self onGetLightEstimate:call andResult:result];
   } else if ([[call method] isEqualToString:@"projectPoint"]) {
       [self onProjectPoint:call andResult:result];
+  } else if ([[call method] isEqualToString:@"unprojectPoint"]) {
+      [self onUnprojectPoint:call andResult:result];
   } else if ([[call method] isEqualToString:@"cameraProjectionMatrix"]) {
       [self onCameraProjectionMatrix:call andResult:result];
+  } else if ([[call method] isEqualToString:@"screenToWorld"]) {
+      [self onScreenToWorld:call andResult:result];
   } else if ([[call method] isEqualToString:@"playAnimation"]) {
       [self onPlayAnimation:call andResult:result];
   } else if ([[call method] isEqualToString:@"stopAnimation"]) {
       [self onStopAnimation:call andResult:result];
   } else if ([[call method] isEqualToString:@"dispose"]) {
       [self.sceneView.session pause];
+  } else if([[call method] isEqualToString:@"runConfig"]){
+      [self runConfig:call andResult:result];
+  } else if([[call method] isEqualToString:@"pauseSession"]){
+      [self pauseSession:call andResult:result];
+  } else if([[call method] isEqualToString:@"snapshot"]){
+      [self saveImage:call andResult:result];
   } else {
     result(FlutterMethodNotImplemented);
   }
+}
+
+-(void)saveImage:(FlutterMethodCall*)call andResult:(FlutterResult)result{
+    NSLog(@"save image");
+    UIImage* image = [_sceneView snapshot];
+    if(image != nil){
+        UIImageWriteToSavedPhotosAlbum(image,nil,nil,nil);
+        result(@(0));
+    }else {
+        result(@(-1));
+    }
+}
+
+-(void)pauseSession:(FlutterMethodCall*)call andResult:(FlutterResult)result{
+    NSLog(@"pause session");
+    [_sceneView.session pause];
+    result(nil);
+}
+
+- (void)runConfig:(FlutterMethodCall*)call andResult:(FlutterResult)result{
+    NSDictionary * params = call.arguments;
+    if(params == nil){
+        result(nil);
+        return;
+    }
+    if(params[@"autoenablesDefaultLighting"] != nil){
+        NSNumber* autoenablesDefaultLighting = params[@"autoenablesDefaultLighting"];
+        self.sceneView.autoenablesDefaultLighting = [autoenablesDefaultLighting boolValue];
+    }
+    if(params[@"planeDetection"]!= nil){
+        NSNumber* requestedPlaneDetection = params[@"planeDetection"];
+        self.planeDetection = [self getPlaneFromNumber:[requestedPlaneDetection intValue]];
+    }
+    _configuration = [self buildConfiguration: call.arguments];
+
+    if(params[@"runOptions"] != nil){
+        NSNumber* runOptions = params[@"runOptions"];
+        [self.sceneView.session runWithConfiguration:_configuration options:[self getOptionsFromNumber:[runOptions intValue]]];
+    } else  {
+        [self.sceneView.session runWithConfiguration:_configuration];
+    }
+    
+
+    result(nil);
 }
 
 - (void)init:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -138,6 +192,11 @@
         [self.sceneView addGestureRecognizer:panGestureRecognizer];
     }
     
+    if ([call.arguments[@"enableRotationRecognizer"] boolValue]) {
+        UIRotationGestureRecognizer *rotationGestureRecognizer = [[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(handleRotationFrom:)];
+        [self.sceneView addGestureRecognizer:rotationGestureRecognizer];
+    }
+    
     self.sceneView.debugOptions = [self getDebugOptions:call.arguments];
     
     _configuration = [self buildConfiguration: call.arguments];
@@ -150,7 +209,7 @@
     int configurationType = [params[@"configuration"] intValue];
     ARConfiguration* _configuration;
     
-    if (configurationType == 0) {
+//    if (configurationType == 0) {
         if (ARWorldTrackingConfiguration.isSupported) {
             ARWorldTrackingConfiguration* worldTrackingConfiguration = [ARWorldTrackingConfiguration new];
             worldTrackingConfiguration.planeDetection = self.planeDetection;
@@ -160,25 +219,6 @@
             }
             _configuration = worldTrackingConfiguration;
         }
-    } else if (configurationType == 1) {
-        if (ARFaceTrackingConfiguration.isSupported) {
-            ARFaceTrackingConfiguration* faceTrackingConfiguration = [ARFaceTrackingConfiguration new];
-            _configuration = faceTrackingConfiguration;
-        }
-    } else if (configurationType == 2) {
-        if (ARImageTrackingConfiguration.isSupported) {
-            ARImageTrackingConfiguration* imageTrackingConfiguration = [ARImageTrackingConfiguration new];
-            NSString* trackingImages = params[@"trackingImagesGroupName"];
-            if ([trackingImages isKindOfClass:[NSString class]]) {
-                imageTrackingConfiguration.trackingImages = [ARReferenceImage referenceImagesInGroupNamed:trackingImages bundle:nil];
-            }
-            _configuration = imageTrackingConfiguration;
-        }
-    } else if (configurationType == 3) {
-        if (ARBodyTrackingConfiguration.isSupported) {
-            _configuration = [ARBodyTrackingConfiguration new];
-        }
-    }
     NSNumber* worldAlignment = params[@"worldAlignment"];
     _configuration.worldAlignment = [self getWorldAlignmentFromNumber:[worldAlignment intValue]];
     return _configuration;
@@ -225,10 +265,27 @@
     CGPoint touchLocation = self.forceUserTapOnCenter
         ? self.sceneView.center
         : [recognizer locationInView:sceneView];
+    NSLog(@"touch location: %@", NSStringFromCGPoint(touchLocation));
     NSArray<SCNHitTestResult *> * hitResults = [sceneView hitTest:touchLocation options:@{}];
     if ([hitResults count] != 0) {
         SCNNode *node = hitResults[0].node;
-        [_channel invokeMethod: @"onNodeTap" arguments: node.name];
+        if(node == nil || [node.name isEqualToString:@"floor"]){
+            //过滤掉floor
+            if([hitResults count] > 1){
+                node = hitResults[1].node;
+            } else {
+                node = nil;
+            }
+        }
+        if(node != nil){
+            NSString* parentName = @"";
+            if(node.parentNode != nil && node.parentNode.name != nil){
+                parentName = [NSString stringWithString:node.parentNode.name];
+            }
+            NSLog(@"on NodeTap %@, parent: %@",node.name, parentName);
+            [_channel invokeMethod: @"onNodeTap" arguments: @{@"name" : node.name, @"parentName": parentName}];
+            NSLog(@"onNodeTap finished");
+        }
     }
 
     NSArray<ARHitTestResult *> *arHitResults = [sceneView hitTest:touchLocation types:ARHitTestResultTypeFeaturePoint
@@ -243,7 +300,9 @@
         for (ARHitTestResult* r in arHitResults) {
             [results addObject:[self getDictFromHitResult:r]];
         }
+        NSLog(@"onARTap start");
         [_channel invokeMethod: @"onARTap" arguments: results];
+        NSLog(@"onARTap finished");
     }
 }
 
@@ -255,22 +314,27 @@
     if (recognizer.state == UIGestureRecognizerStateChanged) {
         ARSCNView* sceneView = (ARSCNView *)recognizer.view;
         CGPoint touchLocation = [recognizer locationInView:sceneView];
-        NSArray<SCNHitTestResult *> * hitResults = [sceneView hitTest:touchLocation options:@{}];
         
-        NSMutableArray<NSDictionary*>* results = [NSMutableArray arrayWithCapacity:[hitResults count]];
-        for (SCNHitTestResult* r in hitResults) {
-            if (r.node.name != nil) {
-                [results addObject:@{@"name" : r.node.name, @"scale" : @(recognizer.scale)}];
-            }
-        }
-        if ([results count] != 0) {
-            [_channel invokeMethod: @"onNodePinch" arguments: results];
-        }
+//        NSArray<SCNHitTestResult *> * hitResults = [sceneView hitTest:touchLocation options:@{}];        
+        NSArray<NSDictionary*>* r = @[@{@"name": @"", @"scale":@(recognizer.scale)}];
+//        NSMutableArray<NSDictionary*>* results = [NSMutableArray arrayWithCapacity:[hitResults count]];
+//        for (SCNHitTestResult* r in hitResults) {
+//            if (r.node.name != nil) {
+//                NSString* parentName = @"";
+//                if(r.node.parentNode != nil && r.node.parentNode.name != nil){
+//                    parentName = [NSString stringWithString:r.node.parentNode.name];
+//                }
+//                [results addObject:@{@"name" : r.node.name,@"scale" : @(recognizer.scale), @"parentName" : parentName }];
+//            }
+//        }
+//        if ([results count] != 0) {
+//            [_channel invokeMethod: @"onNodePinch" arguments: results];
+//        }
+        [_channel invokeMethod:@"onNodePinch" arguments:r];
         recognizer.scale = 1;
     }
 }
-
-- (void) handlePanFrom: (UIPanGestureRecognizer *) recognizer
+- (void) handleRotationFrom: (UIRotationGestureRecognizer *) recognizer
 {
     if (![recognizer.view isKindOfClass:[ARSCNView class]])
         return;
@@ -278,18 +342,54 @@
     if (recognizer.state == UIGestureRecognizerStateChanged) {
         ARSCNView* sceneView = (ARSCNView *)recognizer.view;
         CGPoint touchLocation = [recognizer locationInView:sceneView];
-        CGPoint translation = [recognizer translationInView:sceneView];
-        NSArray<SCNHitTestResult *> * hitResults = [sceneView hitTest:touchLocation options:@{}];
         
-        NSMutableArray<NSDictionary*>* results = [NSMutableArray arrayWithCapacity:[hitResults count]];
-        for (SCNHitTestResult* r in hitResults) {
-            if (r.node.name != nil) {
-                [results addObject:@{@"name" : r.node.name, @"x" : @(translation.x), @"y":@(translation.y)}];
-            }
+        NSArray<NSDictionary*>* r = @[@{@"name": @"",
+        @"velocity":@(recognizer.velocity),
+        @"rotation":@(recognizer.rotation)}];
+        [_channel invokeMethod:@"onNodeRotation" arguments:r];
+        recognizer.rotation = 0;
+    }
+}
+
+- (void) handlePanFrom: (UIPanGestureRecognizer *) recognizer
+{
+    if (![recognizer.view isKindOfClass:[ARSCNView class]])
+        return;
+    if(recognizer.state == UIGestureRecognizerStateBegan){
+        ARSCNView* sceneView = (ARSCNView *)recognizer.view;
+        CGPoint tapPoint = [recognizer locationInView:sceneView];
+        NSArray<ARHitTestResult*>* arTestResults = [sceneView hitTest:tapPoint types:ARHitTestResultTypeFeaturePoint];
+        if([arTestResults count] == 0){
+            return;
         }
-        if ([results count] != 0) {
-            [_channel invokeMethod: @"onNodePan" arguments: results];
+        self.initialHitTestResult = [arTestResults firstObject];
+    } else if (recognizer.state == UIGestureRecognizerStateChanged) {
+        ARSCNView* sceneView = (ARSCNView *)recognizer.view;
+        CGPoint tapPoint = [recognizer locationInView:sceneView];
+        NSArray<ARHitTestResult *> * arHitResults = [sceneView hitTest:tapPoint types:ARHitTestResultTypeFeaturePoint];
+        
+        if(arHitResults.count == 0){
+            return;
         }
+        if(_initialHitTestResult == nil){
+            _initialHitTestResult = [arHitResults firstObject];
+        }
+        ARHitTestResult* result = [arHitResults firstObject];
+        SCNMatrix4 initialMatrix = SCNMatrix4FromMat4(self.initialHitTestResult.worldTransform);
+        SCNVector3 initialVector = SCNVector3Make(initialMatrix.m41, initialMatrix.m42, initialMatrix.m43);
+        
+        SCNMatrix4 matrix = SCNMatrix4FromMat4(result.worldTransform);
+        SCNVector3 vector = SCNVector3Make(matrix.m41, matrix.m42, matrix.m43);
+        
+        CGFloat dx= vector.x - initialVector.x;
+        CGFloat dz= vector.z - initialVector.z;
+        
+        NSMutableArray<NSDictionary*>* results = [NSMutableArray arrayWithCapacity:1];
+        [results addObject:@{@"name": @"", @"x" : @(dx), @"y":@(dz)}];
+        [_channel invokeMethod:@"onNodePan" arguments:results];
+        self.initialHitTestResult = result;
+    } else if(recognizer.state == UIGestureRecognizerStateEnded){
+        self.initialHitTestResult = nil;
     }
 }
 
@@ -341,25 +441,6 @@
     result(nil);
 }
 
-- (void) updateFaceGeometry:(FlutterMethodCall*)call andResult:(FlutterResult)result{
-    NSString* name = call.arguments[@"name"];
-    SCNNode* node = [self.sceneView.scene.rootNode childNodeWithName:name recursively:YES];
-    ARSCNFaceGeometry* geometry = (ARSCNFaceGeometry*)node.geometry;
-    ARFaceAnchor* faceAnchor = [self findAnchor:call.arguments[@"fromAnchorId"] inArray:self.sceneView.session.currentFrame.anchors];
-    
-    [geometry updateFromFaceGeometry:faceAnchor.geometry];
-    
-    result(nil);
-}
-
--(ARFaceAnchor*)findAnchor:(NSString*)searchUUID inArray:(NSArray<ARAnchor *>*)array{
-    for (ARAnchor* obj in array){
-        if([[obj.identifier UUIDString] isEqualToString:searchUUID])
-            return (ARFaceAnchor*)obj;
-    }
-    return NULL;
-}
-
 - (void) onGetLightEstimate:(FlutterMethodCall*)call andResult:(FlutterResult)result{
     ARFrame* frame = self.sceneView.session.currentFrame;
     if (frame != nil && frame.lightEstimate != nil) {
@@ -376,6 +457,26 @@
     SCNVector3 point =  [DecodableUtils parseVector3:call.arguments[@"point"]];
     SCNVector3 projectedPoint = [_sceneView projectPoint:point];
     NSString* coded = [CodableUtils convertSimdFloat3ToString:SCNVector3ToFloat3(projectedPoint)];
+    result(coded);
+}
+
+- (void) onUnprojectPoint:(FlutterMethodCall*)call andResult:(FlutterResult)result{
+    SCNVector3 point =  [DecodableUtils parseVector3:call.arguments[@"point"]];
+    SCNVector3 unprojectPoint = [_sceneView unprojectPoint:point];
+    NSString* coded = [CodableUtils convertSimdFloat3ToString:SCNVector3ToFloat3(unprojectPoint)];
+    result(coded);
+}
+
+- (void) onScreenToWorld:(FlutterMethodCall*)call andResult:(FlutterResult)result{
+    CGPoint point = [DecodableUtils parseCGPoint: call.arguments[@"point"]];
+    // ARHitTestResultType.existingPlaneUsingExtent
+    NSArray<ARHitTestResult *> * results = [_sceneView hitTest:point types: ARHitTestResultTypeExistingPlaneUsingExtent];
+    if([results count] == 0){
+        result(nil);
+        return;
+    }
+    ARHitTestResult* hitResult = [results firstObject];
+    NSString* coded = [CodableUtils convertSimdFloat4x4ToString:hitResult.worldTransform];
     result(coded);
 }
 
@@ -417,6 +518,17 @@
   return ARPlaneDetectionVertical;
 }
 
+-(ARSessionRunOptions) getOptionsFromNumber:(int)number {
+    if(number == 0){
+        return ARSessionRunOptionResetTracking;
+    }else if(number == 1){
+        return ARSessionRunOptionRemoveExistingAnchors;
+    }else if(number == 2){
+        return ARSessionRunOptionStopTrackedRaycasts;
+    }
+    return ARSessionRunOptionResetTracking;
+}
+
 -(ARWorldAlignment) getWorldAlignmentFromNumber: (int) number {
     if (number == 0) {
         return ARWorldAlignmentGravity;
@@ -445,6 +557,9 @@
     }
     if (dict[@"rotation"] != nil) {
         node.rotation = [DecodableUtils parseVector4:dict[@"rotation"]];
+    }
+    if(dict[@"eulerAngles"] != nil){
+        node.eulerAngles = [DecodableUtils parseVector3:dict[@"eulerAngles"]];
     }
     if (dict[@"name"] != nil) {
         node.name = dict[@"name"];
@@ -533,10 +648,54 @@
         NSNumber* color = dict[@"color"];
         light.color = [UIColor fromRGB: [color integerValue]];
     }
+    if (dict[@"shadowMode"] != nil) {
+        int mode = [dict[@"shadowMode"] intValue];
+        SCNShadowMode shadowMode;
+        switch (mode) {
+            case 0:
+                shadowMode = SCNShadowModeForward;
+                break;
+            case 1:
+                shadowMode = SCNShadowModeDeferred;
+                break;
+            case 2:
+                shadowMode = SCNShadowModeModulated;
+                break;
+            default:
+                shadowMode = SCNShadowModeForward;
+                break;
+        }
+        light.shadowMode = shadowMode;
+    }
+    if (dict[@"castsShadow"] != nil) {
+        light.castsShadow = [dict[@"castsShadow"] boolValue];
+    }
+    if (dict[@"automaticallyAdjustsShadowProjection"] != nil) {
+        light.automaticallyAdjustsShadowProjection = [dict[@"automaticallyAdjustsShadowProjection"] boolValue];
+    }
+    if (dict[@"shadowSampleCount"] != nil) {
+        NSNumber* sampleCount = dict[@"shadowSampleCount"];
+        light.shadowSampleCount = [sampleCount integerValue];
+    }
+    if (dict[@"shadowRadius"] != nil) {
+        NSNumber* shadowRadius = dict[@"shadowRadius"];
+        light.shadowRadius = [shadowRadius floatValue];
+    }
+    if (dict[@"shadowMapWidth"] != nil &&
+        dict[@"shadowMapHeight"] != nil) {
+        NSNumber* shadowMapWidth = dict[@"shadowMapWidth"];
+        NSNumber* shadowMapHeight = dict[@"shadowMapHeight"];
+        light.shadowMapSize = CGSizeMake([shadowMapWidth floatValue], [shadowMapHeight floatValue]);
+    }
+    if (dict[@"shadowColor"] != nil) {
+        NSNumber* color = dict[@"shadowColor"];
+        light.shadowColor = [UIColor fromRGB: [color integerValue]];
+    }
     return light;
 }
 
 - (void) addNodeToSceneWithGeometry:(SCNGeometry*)geometry andCall: (FlutterMethodCall*)call andResult:(FlutterResult)result{
+    NSLog(@"add node to scene %@", call.arguments);
     SCNNode* node = [self getNodeWithGeometry:geometry fromDict:call.arguments];
     if (call.arguments[@"parentNodeName"] != nil) {
         SCNNode *parentNode = [self.sceneView.scene.rootNode childNodeWithName:call.arguments[@"parentNodeName"] recursively:YES];

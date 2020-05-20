@@ -19,13 +19,18 @@ export 'package:arkit_plugin/geometries/arkit_pyramid.dart';
 export 'package:arkit_plugin/geometries/arkit_tube.dart';
 export 'package:arkit_plugin/geometries/arkit_torus.dart';
 export 'package:arkit_plugin/geometries/arkit_capsule.dart';
+export 'package:arkit_plugin/geometries/arkit_floor.dart';
 export 'package:arkit_plugin/physics/arkit_physics_body_type.dart';
 export 'package:arkit_plugin/physics/arkit_physics_body.dart';
 export 'package:arkit_plugin/physics/arkit_physics_shape.dart';
 export 'package:arkit_plugin/light/arkit_light.dart';
 export 'package:arkit_plugin/light/arkit_light_type.dart';
 export 'package:arkit_plugin/light/arkit_light_estimate.dart';
+export 'package:arkit_plugin/light/arkit_light_shadow_mode.dart';
 export 'package:arkit_plugin/hit/arkit_hit_test_result.dart';
 export 'package:arkit_plugin/hit/arkit_hit_test_result_type.dart';
 export 'package:arkit_plugin/hit/arkit_node_pinch_result.dart';
 export 'package:arkit_plugin/hit/arkit_node_pan_result.dart';
+export 'package:arkit_plugin/hit/arkit_node_tap_result.dart';
+export 'package:arkit_plugin/hit/arkit_node_rotation_result.dart';
+

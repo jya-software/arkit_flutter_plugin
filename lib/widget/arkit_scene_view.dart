@@ -13,6 +13,8 @@ import 'package:arkit_plugin/geometries/arkit_torus.dart';
 import 'package:arkit_plugin/geometries/arkit_tube.dart';
 import 'package:arkit_plugin/hit/arkit_node_pan_result.dart';
 import 'package:arkit_plugin/hit/arkit_node_pinch_result.dart';
+import 'package:arkit_plugin/hit/arkit_node_rotation_result.dart';
+import 'package:arkit_plugin/hit/arkit_node_tap_result.dart';
 import 'package:arkit_plugin/light/arkit_light_estimate.dart';
 import 'package:arkit_plugin/utils/matrix4_utils.dart';
 import 'package:arkit_plugin/widget/arkit_arplane_detection.dart';
@@ -28,10 +30,12 @@ import 'package:vector_math/vector_math_64.dart';
 typedef ARKitPluginCreatedCallback = void Function(ARKitController controller);
 typedef StringResultHandler = void Function(String text);
 typedef AnchorEventHandler = void Function(ARKitAnchor anchor);
+typedef ARKitTapResultHandler = void Function(ARKitNodeTapResult);
 typedef ARKitHitResultHandler = void Function(List<ARKitTestResult> hits);
 typedef ARKitPanResultHandler = void Function(List<ARKitNodePanResult> pans);
 typedef ARKitPinchGestureHandler = void Function(
     List<ARKitNodePinchResult> pinch);
+typedef ARKitRotationGestureHandler = void Function(List<ARKitNodeRotationResult>);
 
 /// A widget that wraps ARSCNView from ARKit.
 class ARKitSceneView extends StatefulWidget {
@@ -44,6 +48,7 @@ class ARKitSceneView extends StatefulWidget {
     this.enableTapRecognizer = false,
     this.enablePinchRecognizer = false,
     this.enablePanRecognizer = false,
+    this.enableRotationRecognizer = false,
     this.showFeaturePoints = false,
     this.showWorldOrigin = false,
     this.planeDetection = ARPlaneDetection.none,
@@ -82,6 +87,8 @@ class ARKitSceneView extends StatefulWidget {
   /// Determines whether the receiver should recognize pan events.
   /// The default is false.
   final bool enablePanRecognizer;
+
+  final bool enableRotationRecognizer;
 
   /// Type of planes to detect in the scene.
   /// If set, new planes will continue to be detected and updated over time.
@@ -222,10 +229,11 @@ class ARKitController {
   /// the interruption has ended. If the device has moved, anchors will be misaligned.
   VoidCallback onSessionInterruptionEnded;
 
-  StringResultHandler onNodeTap;
+  ARKitTapResultHandler onNodeTap;
   ARKitHitResultHandler onARTap;
   ARKitPinchGestureHandler onNodePinch;
   ARKitPanResultHandler onNodePan;
+  ARKitRotationGestureHandler onNodeRotation;
 
   /// Called when a new node has been mapped to the given anchor.
   AnchorEventHandler onAddNodeForAnchor;
@@ -283,6 +291,18 @@ class ARKitController {
     return projectPoint != null ? createVector3FromString(projectPoint) : null;
   }
 
+  Future<Vector3> unprojectPoint(Vector3 point) async {
+    final unprojectPoint = await _channel.invokeMethod<String>(
+        'unprojectPoint', {'point': convertVector3ToMap(point)});
+    return unprojectPoint != null ? createVector3FromString(unprojectPoint) : null;
+  }
+
+  Future<Matrix4> screenToWorld(Vector2 point) async {
+    final worldPoint = await _channel.invokeMethod<String>(
+      'screenToWorld',{'point': convertVector2ToMap(point)});
+    return worldPoint != null ? getMatrixFromString(worldPoint): null;
+  }
+
   Future<Matrix4> cameraProjectionMatrix() async {
     final cameraProjectionMatrix =
         await _channel.invokeMethod<String>('cameraProjectionMatrix');
@@ -316,6 +336,31 @@ class ARKitController {
     });
   }
 
+  Future<void> pauseSession(){
+    return _channel.invokeMethod('pauseSession');
+  }
+
+  Future<void> runConfig({
+    ARKitConfiguration configuration = ARKitConfiguration.worldTracking,
+    ARWorldAlignment worldAlignment = ARWorldAlignment.gravity,
+    ARKitRunOptions option,
+    ARPlaneDetection planeDetection,
+    bool autoenablesDefaultLighting,
+  }){
+    return _channel.invokeMethod('runConfig', {
+      'configuration': configuration.index,
+      'worldAlignment': worldAlignment.index,
+      'runOptions': option?.index,
+      'planeDetection': planeDetection?.index,
+      'autoenablesDefaultLighting': autoenablesDefaultLighting,
+    }..removeWhere((String k, dynamic v) => v == null));
+  }
+
+  Future<bool> snapshot() async {
+    final int res = await _channel.invokeMethod('snapshot');
+    return res != null && res == 0;
+  }
+
   Map<String, dynamic> _addParentNodeNameToParams(
       Map geometryMap, String parentNodeName) {
     if (parentNodeName?.isNotEmpty ?? false)
@@ -325,7 +370,7 @@ class ARKitController {
 
   Future<void> _platformCallHandler(MethodCall call) {
     if (debug) {
-      print('_platformCallHandler call ${call.method} ${call.arguments}');
+      // print('_platformCallHandler call ${call.method} ${call.arguments}');
     }
     switch (call.method) {
       case 'onError':
@@ -335,7 +380,8 @@ class ARKitController {
         break;
       case 'onNodeTap':
         if (onNodeTap != null) {
-          onNodeTap(call.arguments);
+          final Map input = call.arguments.cast<String, String>();
+          onNodeTap(ARKitNodeTapResult.fromMap(input));
         }
         break;
       case 'onARTap':
@@ -358,6 +404,17 @@ class ARKitController {
                   (Map<dynamic, dynamic> r) => ARKitNodePinchResult.fromMap(r))
               .toList();
           onNodePinch(objects);
+        }
+        break;
+      case 'onNodeRotation':
+        if (onNodeRotation != null) {
+          final List<dynamic> input = call.arguments;
+          final objects = input
+              .cast<Map<dynamic, dynamic>>()
+              .map<ARKitNodeRotationResult>(
+                  (Map<dynamic, dynamic> r) => ARKitNodeRotationResult.fromMap(r))
+              .toList();
+          onNodeRotation(objects);
         }
         break;
       case 'onNodePan':

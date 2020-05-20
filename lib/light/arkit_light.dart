@@ -1,3 +1,4 @@
+import 'package:arkit_plugin/light/arkit_light_shadow_mode.dart';
 import 'package:arkit_plugin/light/arkit_light_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -5,12 +6,20 @@ import 'package:flutter/widgets.dart';
 /// ARKitLight represents a light that can be attached to a ARKitNode.
 class ARKitLight {
   ARKitLight({
-    this.type = ARKitLightType.omni,
+    this.type,
     this.color = Colors.white,
-    this.temperature = 6500,
+    this.temperature,
     double intensity,
-    this.spotInnerAngle = 0,
-    this.spotOuterAngle = 45,
+    this.spotInnerAngle,
+    this.spotOuterAngle,
+    this.shadowMode,
+    this.castsShadow,
+    this.automaticallyAdjustsShadowProjection,
+    this.shadowSampleCount,
+    this.shadowRadius,
+    this.shadowMapWidth,
+    this.shadowMapHeight,
+    this.shadowColor,
   }) : intensity = ValueNotifier(intensity ?? 1000);
 
   /// Light type.
@@ -40,12 +49,36 @@ class ARKitLight {
   /// Defaults to 45 degrees.
   final double spotOuterAngle;
 
+  final ARKitLightShadowMode shadowMode;
+
+  final bool castsShadow;
+
+  final bool automaticallyAdjustsShadowProjection;
+
+  final int shadowSampleCount;
+
+  final double shadowRadius;
+
+  final double shadowMapWidth;
+
+  final double shadowMapHeight;
+
+  final Color shadowColor;
+
   Map<String, dynamic> toMap() => <String, dynamic>{
-        'type': type.index,
-        'color': color.value,
+        'type': type?.index,
+        'color': color?.value,
         'temperature': temperature,
-        'intensity': intensity.value,
+        'intensity': intensity?.value,
         'spotInnerAngle': spotInnerAngle,
         'spotOuterAngle': spotOuterAngle,
-      };
+        'shadowMode': shadowMode?.index,
+        'castsShadow': castsShadow,
+        'automaticallyAdjustsShadowProjection': automaticallyAdjustsShadowProjection,
+        'shadowSampleCount': shadowSampleCount,
+        'shadowRadius': shadowRadius,
+        'shadowMapWidth':shadowMapWidth,
+        'shadowMapHeight':shadowMapHeight,
+        'shadowColor': shadowColor?.value,
+      }..removeWhere((String k, dynamic v) => v == null);
 }

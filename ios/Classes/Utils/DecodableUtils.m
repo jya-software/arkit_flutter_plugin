@@ -1,6 +1,11 @@
 #import "DecodableUtils.h"
 
 @implementation DecodableUtils
++ (CGPoint) parseCGPoint:(NSDictionary*) vector {
+    NSNumber* x = vector[@"x"];
+    NSNumber* y = vector[@"y"];
+    return CGPointMake([x floatValue],[y floatValue]);
+}
 
 + (SCNVector3) parseVector3:(NSDictionary*) vector {
     NSNumber* x = vector[@"x"];

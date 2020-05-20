@@ -29,8 +29,8 @@
         selector = @selector(getTorus:);
     } else if ([geometryArguments[@"dartType"] isEqualToString:@"ARKitCapsule"]) {
         selector = @selector(getCapsule:);
-    } else if ([geometryArguments[@"dartType"] isEqualToString:@"ARKitFace"]) {
-        selector = @selector(getFace:withDeivce:);
+    } else if ([geometryArguments[@"dartType"] isEqualToString:@"ARKitFloor"]){
+        selector = @selector(getFloor:);
     }
     
     if (selector == nil)
@@ -71,6 +71,7 @@
     material.transparencyMode = [materialString[@"transparencyMode"] integerValue];
     material.locksAmbientWithDiffuse = [materialString[@"locksAmbientWithDiffuse"] boolValue];
     material.writesToDepthBuffer =[materialString[@"writesToDepthBuffer"] boolValue];
+    material.readsFromDepthBuffer = [materialString[@"readsFromDepthBuffer"] boolValue];
     material.colorBufferWriteMask = [self getColorMask:[materialString[@"colorBufferWriteMask"] integerValue]];
     material.blendMode = [materialString[@"blendMode"] integerValue];
     material.doubleSided = [materialString[@"doubleSided"] boolValue];
@@ -118,7 +119,12 @@
         case 3:
             return SCNLightingModelConstant;
         default:
-            return SCNLightingModelPhysicallyBased;
+            if (@available(iOS 10.0, *)) {
+                return SCNLightingModelPhysicallyBased;
+            } else {
+                // Fallback on earlier versions
+                return SCNLightingModelPhong;
+            }
     }
 }
 
@@ -222,9 +228,12 @@
     NSNumber* height = geometryArguments[@"height"];
     return [SCNCapsule capsuleWithCapRadius:[capRadius floatValue] height:[height floatValue]];
 }
+//
+//+ (ARSCNFaceGeometry *) getFace:(NSDictionary *) geometryArguments withDeivce:(id) device{
+//    return [ARSCNFaceGeometry faceGeometryWithDevice:device];
+//}
 
-+ (ARSCNFaceGeometry *) getFace:(NSDictionary *) geometryArguments withDeivce:(id) device{
-    return [ARSCNFaceGeometry faceGeometryWithDevice:device];
++ (SCNFloor *) getFloor: (NSDictionary *) geometryArguments{
+    return [SCNFloor floor];
 }
-
 @end

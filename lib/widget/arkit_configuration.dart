@@ -20,3 +20,9 @@ enum ARKitConfiguration {
   /// Body tracking provides 6 degrees of freedom tracking of a detected body in the scene.
   bodyTracking,
 }
+
+enum ARKitRunOptions {
+  ARSessionRunOptionResetTracking,
+  ARSessionRunOptionRemoveExistingAnchors,
+  ARSessionRunOptionStopTrackedRaycasts,
+}
